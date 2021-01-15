@@ -1,0 +1,11 @@
+﻿Group,Bias,Risk Score,Weight,Points
+ExternalRiskEstimate,-0.29,0.819,1.593,1.304667
+TradeOpenTime,-0.551,0.523,2.468,1.290764
+NumSatisfactoryTrades,-0.097,0.517,2.273,1.175141
+TradeFrequency,-0.042,0.45,0.358,0.1611
+Delinquency,-0.237,0.799,2.47,1.97353
+Installment,0.101,0.561,1.175,0.659175
+Inquiry,-0.808,0.639,2.994,1.913166
+RevolvingBalance,0.135,0.803,1.877,1.507231
+Utilization,0.366,0.442,1.119,0.494598
+TradeWBalance,0.227,0.731,0.214,0.156434
