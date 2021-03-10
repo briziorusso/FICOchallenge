@@ -4,6 +4,8 @@ import random
 import tensorflow.compat.v1 as tf
 tf.disable_v2_behavior() 
 from sklearn.metrics import mean_squared_error
+import os
+from modules.utils import *
 
 # this allows wider numpy viewing for matrices
 np.set_printoptions(linewidth=np.inf)
@@ -12,13 +14,7 @@ class CASTLE(object):
     def __init__(self, num_train, lr  = None, batch_size = 32, num_inputs = 1, num_outputs = 1,
                  w_threshold = 0.3, n_hidden = 32, hidden_layers = 2, ckpt_file = 'tmp.ckpt',
                  standardize = True,  reg_lambda=None, reg_beta=None, DAG_min = 0.5):
-        
-        seed = 1
-        from numpy.random import seed
-        seed(1)
-        from tensorflow import set_random_seed
-        set_random_seed(1)
-        
+           
         self.count = 0
         self.max_steps = 200
         self.saves = 50 
@@ -66,20 +62,20 @@ class CASTLE(object):
         
         # Create the input and output weight matrix for each feature
         for i in range(self.num_inputs):
-            self.weights['w_h0_'+str(i)] = tf.Variable(tf.random_normal([self.num_inputs, self.n_hidden], seed = 1)*0.1) 
-            self.weights['out_'+str(i)] = tf.Variable(tf.random_normal([self.n_hidden, self.num_outputs], seed = 1))
+            self.weights['w_h0_'+str(i)] = tf.Variable(tf.random_normal([self.num_inputs, self.n_hidden])*0.1) 
+            self.weights['out_'+str(i)] = tf.Variable(tf.random_normal([self.n_hidden, self.num_outputs]))
             
         for i in range(self.num_inputs):
-            self.biases['b_h0_'+str(i)] = tf.Variable(tf.random_normal([self.n_hidden], seed = 1)*0.1)
-            self.biases['out_'+str(i)] = tf.Variable(tf.random_normal([self.num_outputs], seed = 1))
+            self.biases['b_h0_'+str(i)] = tf.Variable(tf.random_normal([self.n_hidden])*0.1)
+            self.biases['out_'+str(i)] = tf.Variable(tf.random_normal([self.num_outputs]))
         
         
         # The first and second layers are shared
         self.weights.update({
-            'w_h1': tf.Variable(tf.random_normal([self.n_hidden, self.n_hidden], seed = 1))
+            'w_h1': tf.Variable(tf.random_normal([self.n_hidden, self.n_hidden]))
         })
         self.biases.update({
-            'b_h1': tf.Variable(tf.random_normal([self.n_hidden], seed = 1))
+            'b_h1': tf.Variable(tf.random_normal([self.n_hidden]))
         })
         
         
@@ -161,7 +157,8 @@ class CASTLE(object):
 #             print('w_1',w_1)
             w_2 = tf.slice(self.weights['w_h0_'+str(i)],[i+1,0],[-1,-1])
 #             print('w_2',w_2)
-            L1_loss += L1_alpha*(tf.math.sqrt(tf.cast(w_1.shape[0], tf.float32))*tf.reduce_sum(tf.norm(w_1, ord=2 ))+tf.math.sqrt(tf.cast(w_2.shape[0], tf.float32))*tf.reduce_sum(tf.norm(w_2, ord=2 ))) + (1-L1_alpha)*(tf.reduce_sum(tf.norm(w_1, ord=1 ))+tf.reduce_sum(tf.norm(w_2, ord=1 )))
+            L1_loss += tf.reduce_sum(tf.norm(w_1,axis=1))+tf.reduce_sum(tf.norm(w_2,axis=1))
+#             L1_loss += L1_alpha*(tf.math.sqrt(tf.cast(w_1.shape[0], tf.float32))*tf.reduce_sum(tf.norm(w_1, ord=2 ))+tf.math.sqrt(tf.cast(w_2.shape[0], tf.float32))*tf.reduce_sum(tf.norm(w_2, ord=2 ))) + (1-L1_alpha)*(tf.reduce_sum(tf.norm(w_1, ord=1 ))+tf.reduce_sum(tf.norm(w_2, ord=1 )))
 #             print('L1_loss',L1_loss)
         
         # Residuals
@@ -183,7 +180,7 @@ class CASTLE(object):
                                                         )
             
         #Add in supervised loss
-        self.regularization_loss_subset +=  self.rho * self.supervised_loss
+        self.regularization_loss_subset +=  self.Lambda *self.rho* self.supervised_loss
         
         self.loss_op_dag = self.optimizer_subset.minimize(self.regularization_loss_subset)
 
@@ -210,66 +207,75 @@ class CASTLE(object):
         return input_layer + noise
     
     
-    def fit(self, X, y,num_nodes, X_val, y_val, X_test, y_test):         
+    def fit(self, X, y,num_nodes, X_val, y_val, X_test, y_test, overwrite=False): 
         
-        from random import sample 
-        rho_i = np.array([[1.0]])
-        alpha_i = np.array([[1.0]])
-        
-        best = 1e9
-        best_value = 1e9
-        for step in range(1, self.max_steps):
-            h_value, loss  = self.sess.run([self.h, self.supervised_loss ], feed_dict={self.X: X, self.y: y, self.keep_prob : 1, self.rho:rho_i, self.alpha:alpha_i, self.is_train : True, self.noise:0})
-            
-#             l_value  = self.sess.run([ self.mse_loss_subset], feed_dict={self.X: X, self.y: y, self.keep_prob : 1, self.rho:rho_i, self.alpha:alpha_i, self.is_train : True, self.noise:0})
-            
-            print("Step " + str(step) + 
-                  ", Loss= " + "{:.4f}".format(loss) +
-#                   " SLoss: " + "{:.4f}".format(s_loss),
-#                   " l_value:", l_value, 
-                  " h_value:", h_value ) 
+        file_path = self.tmp+".data-00000-of-00001"        
 
-                
-            for step1 in range(1, (X.shape[0] // self.batch_size) + 1):
+        if os.path.exists(file_path) and not overwrite:
+            self.saver.restore(self.sess, self.tmp)
+            print("Model Loaded from ",self.tmp)
+        else:
+            from random import sample 
 
-               
-                idxs = random.sample(range(X.shape[0]), self.batch_size)
-                batch_x = X[idxs]
-                batch_y = np.expand_dims(batch_x[:,0], -1)
-                one_hot_sample = [0]*self.num_inputs
-                subset_ = sample(range(self.num_inputs),num_nodes) 
-                for j in subset_:
-                    one_hot_sample[j] = 1
-                self.sess.run(self.loss_op_dag, feed_dict={self.X: batch_x, self.y: batch_y, self.sample:one_hot_sample,
-                                                              self.keep_prob : 1, self.rho:rho_i, self.alpha:alpha_i, self.Lambda : self.reg_lambda, self.is_train : True, self.noise : 0})
+            random_stability()
 
-            val_loss = self.val_loss(X_val, y_val)
-            print("Val Loss= " + "{:.4f}".format(val_loss))
-            
-            if val_loss < best_value:
-                best_value = val_loss
-                
-            h_value, loss = self.sess.run([self.h, self.supervised_loss], feed_dict={self.X: X, self.y: y, self.keep_prob : 1, self.rho:rho_i, self.alpha:alpha_i, self.is_train : True, self.noise:0})
-            
-            if step >= self.saves:
-                try:
-                    if val_loss < best:
-                        best = val_loss 
-                        self.saver.save(self.sess, self.tmp)
-                        print("Saving model")
-                        self.count = 0
-                    else:
-                        self.count += 1
-                except:
-                    print("Error caught in calculation")
-                    
-            if self.count > self.patience:
-                print("Early stopping")
-                break
+            rho_i = np.array([[1.0]])
+            alpha_i = np.array([[1.0]])
 
-        self.saver.restore(self.sess, self.tmp)
-        W_est = self.sess.run(self.W, feed_dict={self.X: X, self.y: y, self.keep_prob : 1, self.rho:rho_i, self.alpha:alpha_i, self.is_train : True, self.noise:0})
-        W_est[np.abs(W_est) < self.w_threshold] = 0
+            best = 1e9
+            best_value = 1e9
+            for step in range(1, self.max_steps):
+                h_value, loss  = self.sess.run([self.h, self.supervised_loss ], feed_dict={self.X: X, self.y: y, self.keep_prob : 1, self.rho:rho_i, self.alpha:alpha_i, self.is_train : True, self.noise:0})
+
+    #             l_value  = self.sess.run([ self.mse_loss_subset], feed_dict={self.X: X, self.y: y, self.keep_prob : 1, self.rho:rho_i, self.alpha:alpha_i, self.is_train : True, self.noise:0})
+
+                print("Step " + str(step) + 
+                      ", Loss= " + "{:.4f}".format(loss) +
+    #                   " SLoss: " + "{:.4f}".format(s_loss),
+    #                   " l_value:", l_value, 
+                      " h_value:", h_value ) 
+
+
+                for step1 in range(1, (X.shape[0] // self.batch_size) + 1):
+
+
+                    idxs = random.sample(range(X.shape[0]), self.batch_size)
+                    batch_x = X[idxs]
+                    batch_y = np.expand_dims(batch_x[:,0], -1)
+                    one_hot_sample = [0]*self.num_inputs
+                    subset_ = sample(range(self.num_inputs),num_nodes) 
+                    for j in subset_:
+                        one_hot_sample[j] = 1
+                    self.sess.run(self.loss_op_dag, feed_dict={self.X: batch_x, self.y: batch_y, self.sample:one_hot_sample,
+                                                                  self.keep_prob : 1, self.rho:rho_i, self.alpha:alpha_i, self.Lambda : self.reg_lambda, self.is_train : True, self.noise : 0})
+
+                val_loss = self.val_loss(X_val, y_val)
+                print("Val Loss= " + "{:.4f}".format(val_loss))
+
+                if val_loss < best_value:
+                    best_value = val_loss
+
+                h_value, loss = self.sess.run([self.h, self.supervised_loss], feed_dict={self.X: X, self.y: y, self.keep_prob : 1, self.rho:rho_i, self.alpha:alpha_i, self.is_train : True, self.noise:0})
+
+                if step >= self.saves:
+                    try:
+                        if val_loss < best:
+                            best = val_loss 
+                            self.saver.save(self.sess, self.tmp)
+                            print("Saving model")
+                            self.count = 0
+                        else:
+                            self.count += 1
+                    except:
+                        print("Error caught in calculation")
+
+                if self.count > self.patience:
+                    print("Early stopping")
+                    break
+
+            self.saver.restore(self.sess, self.tmp)
+            W_est = self.sess.run(self.W, feed_dict={self.X: X, self.y: y, self.keep_prob : 1, self.rho:rho_i, self.alpha:alpha_i, self.is_train : True, self.noise:0})
+            W_est[np.abs(W_est) < self.w_threshold] = 0
 
    
     def val_loss(self, X, y):
