@@ -6,6 +6,7 @@ tf.disable_v2_behavior()
 from sklearn.metrics import mean_squared_error
 import os
 from modules.utils import *
+import networkx as nx
 
 # this allows wider numpy viewing for matrices
 np.set_printoptions(linewidth=np.inf)
@@ -295,13 +296,9 @@ class CASTLE(object):
         return self.sess.run(self.supervised_loss, feed_dict={self.X: X, self.y: y, self.sample:one_hot_sample, self.keep_prob : 1, self.rho:np.array([[1.0]]), 
                                                               self.alpha:np.array([[0.0]]), self.Lambda : self.reg_lambda, self.is_train : False, self.noise:0})
         
-        
+
     def pred(self, X):
         return self.sess.run(self.out_layer['nn_0'], feed_dict={self.X: X, self.keep_prob:1, self.is_train : False, self.noise:0})
-
-    def pred_x(self, X, Y):
-        i = X.columns.get_loc(Y)
-        return self.sess.run(self.out_layer['nn_'+str(i)], feed_dict={self.X: X, self.keep_prob:1, self.is_train : False, self.noise:0})
 
     def get_weights(self, X, y):
         return self.sess.run(self.W, feed_dict={self.X: X, self.y: y, self.keep_prob : 1, self.rho:np.array([[1.0]]), self.alpha:np.array([[0.0]]), self.is_train : False, self.noise:0})
@@ -321,3 +318,41 @@ class CASTLE(object):
     
     def get_Wout(self, X, y):
         return self.sess.run([self.weights['out_0'],self.biases['out_0']], feed_dict={self.X: X, self.y: y, self.keep_prob : 1, self.rho:np.array([[1.0]]), self.alpha:np.array([[0.0]]), self.is_train : False, self.noise:0})
+
+## For DBX
+    def predict_proba(self, X):
+        return self.sess.run(self.out_layer['nn_0'], feed_dict={self.X: X, self.keep_prob:1, self.is_train : False, self.noise:0})
+
+    def predict(self, X):
+        proba = self.sess.run(self.out_layer['nn_0'], feed_dict={self.X: X, self.keep_prob:1, self.is_train : False, self.noise:0})
+        pred = np.array([int(i > .5) for i in proba])
+        return pred
+
+    def predict_proba_x(self, X, Y):
+        i = X.columns.get_loc(Y)
+        return self.sess.run(self.out_layer['nn_'+str(i)], feed_dict={self.X: X, self.keep_prob:1, self.is_train : False, self.noise:0})
+
+    def get_influences(self, X, y, threshold):
+
+        def max_over_diag(mat):
+            up_tri = np.triu(mat)
+            low_tri = np.tril(mat)
+            
+            up_mask = (up_tri==np.maximum(up_tri, low_tri.T)).astype(int)
+            low_mask = (low_tri.T==np.maximum(up_tri, low_tri.T)).astype(int)
+
+            maxed_adj = (up_tri*up_mask)+(low_tri.T*low_mask).T
+
+            return maxed_adj
+
+        def zero_under_t(mat, threshold):
+            mask = (mat>threshold).astype(int)
+            thresholded_mat=mat*mask
+            return thresholded_mat
+
+        adj_matrix = self.sess.run(self.W, feed_dict={self.X: X, self.y: y, self.keep_prob : 1, self.rho:np.array([[1.0]]), self.alpha:np.array([[0.0]]), self.is_train : False, self.noise:0})
+    
+        maxed_adj = zero_under_t(max_over_diag(adj_matrix),threshold)
+        G1 = nx.from_numpy_matrix(maxed_adj,create_using=nx.DiGraph, parallel_edges=False)
+
+        return G1
