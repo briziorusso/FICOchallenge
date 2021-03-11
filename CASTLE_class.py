@@ -108,7 +108,10 @@ class CASTLE(object):
             self.hidden_h0['nn_'+str(i)] = self.activation(tf.add(tf.matmul(self.X, self.weights['w_h0_'+str(i)]), self.biases['b_h0_'+str(i)]))
             self.hidden_h1['nn_'+str(i)] = self.activation(tf.add(tf.matmul(self.hidden_h0['nn_'+str(i)], self.weights['w_h1']), self.biases['b_h1']))
 #             self.hidden_h2['nn_'+str(i)] = self.activation(tf.add(tf.matmul(self.hidden_h1['nn_'+str(i)], self.weights['w_h2']), self.biases['b_h2']))
-            self.out_layer['nn_'+str(i)] = self.out_activation(tf.add(tf.matmul(self.hidden_h1['nn_'+str(i)], self.weights['out_'+str(i)]), self.biases['out_'+str(i)]))
+            if i == 0:
+                self.out_layer['nn_'+str(i)] = self.out_activation(tf.add(tf.matmul(self.hidden_h1['nn_'+str(i)], self.weights['out_'+str(i)]), self.biases['out_'+str(i)]))
+            else:
+                self.out_layer['nn_'+str(i)] = tf.add(tf.matmul(self.hidden_h1['nn_'+str(i)], self.weights['out_'+str(i)]), self.biases['out_'+str(i)])
             self.Out_0.append(self.out_layer['nn_'+str(i)])
         
         # Concatenate all the constructed features
@@ -295,7 +298,11 @@ class CASTLE(object):
         
     def pred(self, X):
         return self.sess.run(self.out_layer['nn_0'], feed_dict={self.X: X, self.keep_prob:1, self.is_train : False, self.noise:0})
-        
+
+    def pred_x(self, X, Y):
+        i = X.columns.get_loc(Y)
+        return self.sess.run(self.out_layer['nn_'+str(i)], feed_dict={self.X: X, self.keep_prob:1, self.is_train : False, self.noise:0})
+
     def get_weights(self, X, y):
         return self.sess.run(self.W, feed_dict={self.X: X, self.y: y, self.keep_prob : 1, self.rho:np.array([[1.0]]), self.alpha:np.array([[0.0]]), self.is_train : False, self.noise:0})
     
