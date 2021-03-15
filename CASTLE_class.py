@@ -320,8 +320,11 @@ class CASTLE(object):
         return self.sess.run([self.weights['out_0'],self.biases['out_0']], feed_dict={self.X: X, self.y: y, self.keep_prob : 1, self.rho:np.array([[1.0]]), self.alpha:np.array([[0.0]]), self.is_train : False, self.noise:0})
 
 ## For DBX
+
     def predict_proba(self, X):
-        return self.sess.run(self.out_layer['nn_0'], feed_dict={self.X: X, self.keep_prob:1, self.is_train : False, self.noise:0})
+        prob1 = self.sess.run(self.out_layer['nn_0'], feed_dict={self.X: X, self.keep_prob:1, self.is_train : False, self.noise:0})
+        prob0 = 1 - prob1
+        return np.stack([prob0, prob1], axis=1)
 
     def predict(self, X):
         proba = self.sess.run(self.out_layer['nn_0'], feed_dict={self.X: X, self.keep_prob:1, self.is_train : False, self.noise:0})
