@@ -5,3 +5,4 @@ sklearn
 seaborn
 pyvis
 plotly
+tensorflow==1.15
